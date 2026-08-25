@@ -1,0 +1,44 @@
+# Environment variables / secrets
+.env
+.env.*
+!.env.example
+
+# Python virtual environment
+venv/
+.venv/
+env/
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Generated Excel / lead data
+*.xlsx
+*.xls
+output/
+exports/
+
+# Logs
+*.log
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+
+# Temporary files
+*.tmp
+*.temp
+
+# Test output
+test_output/
+
+# LibreOffice lock files
+.~lock.*#
