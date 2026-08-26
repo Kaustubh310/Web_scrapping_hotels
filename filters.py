@@ -77,6 +77,7 @@ ACCOMMODATION_TERMS = [
 
 
 CHAIN_TERMS = [
+    # Major international chains
     "marriott",
     "hilton",
     "hyatt",
@@ -92,10 +93,29 @@ CHAIN_TERMS = [
     "le meridien",
     "four points",
     "courtyard",
+
+    # Indian chains
     "taj ",
     "itc ",
     "lemon tree",
-    "ginger hotel",
+    "ginger",
+    "sayaji",
+    "royal orchid",
+    "regenta",
+    "club mahindra",
+    "the byke",
+    "byke ",
+
+    # Managed/franchise networks
+    "oyo",
+    "fabhotel",
+    "fab hotels",
+    "fabexpress",
+    "stayvista",
+    "treebo",
+    "bloom",
+    "itsy hotels",
+    "itsy hotel",
 ]
 
 EXCLUDED_BRANDS = [

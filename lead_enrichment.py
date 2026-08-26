@@ -43,12 +43,12 @@ def enrich_lead(
 ):
 
     hotel_name = row.get(
-        hotel_column,
+        "Property Name",
         "",
     )
 
     website = row.get(
-        website_column,
+        "Website",
         "",
     )
 
@@ -85,6 +85,14 @@ def enrich_lead(
 
     result = find_emails_from_website(
         website
+    )
+
+    print(
+        f"    DEBUG email result for {hotel_name}:"
+    )
+
+    print(
+        f"    {result}"
     )
 
     primary_email = result.get(

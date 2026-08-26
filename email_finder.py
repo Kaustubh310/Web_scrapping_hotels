@@ -11,6 +11,38 @@ from browser_email_finder import (
     find_emails_with_browser,
 )
 
+MAX_PAGES = 10
+
+PAGE_PRIORITY_TERMS = {
+    # Highest priority
+    "contact": 100,
+    "contact-us": 100,
+    "contactus": 100,
+    "contact-information": 100,
+    "reach-us": 95,
+    "get-in-touch": 95,
+
+    # Sales / management
+    "sales": 95,
+    "revenue": 95,
+    "management": 90,
+    "team": 85,
+    "owner": 85,
+    "director": 85,
+
+    # Booking
+    "reservation": 90,
+    "reservations": 90,
+    "booking": 85,
+    "bookings": 85,
+    "enquiry": 80,
+    "enquiries": 80,
+
+    # About
+    "about": 60,
+    "about-us": 60,
+}
+
 EMAIL_REGEX = re.compile(
     r"(?<![A-Za-z0-9._%+-])"
     r"[A-Za-z0-9][A-Za-z0-9._%+-]{0,63}"
@@ -104,9 +136,42 @@ EXCLUDED_EMAIL_DOMAINS = {
     # Common technical / infrastructure domains
     "example.com",
     "example.org",
-    "example.net",
+    "example.net",    
+    "yourdomain.com",
+    "domain.com",
+}
 
-    # Add more here if we encounter them
+def is_high_priority_email(email):
+
+    if not email:
+        return False
+
+    local_part = (
+        email
+        .split("@")[0]
+        .lower()
+        .strip()
+    )
+
+    return local_part in {
+        "sales",
+        "revenue",
+        "gm",
+        "generalmanager",
+        "general.manager",
+        "owner",
+        "director",
+    }
+    
+EXCLUDED_EMAIL_LOCALS = {
+    "test",
+    "testing",
+    "example",
+    "yourname",
+    "your.name",
+    "username",
+    "user",
+    "admin",
 }
 
 def normalize_website(url):
@@ -156,6 +221,29 @@ def is_real_email(email):
 
     if "@" not in email:
         return False
+
+    # ----------------------------------------
+    # Reject image filenames
+    # ----------------------------------------
+
+    if "@2x" in email:
+        return False
+
+    if email.endswith(
+        (
+            ".png",
+            ".jpg",
+            ".jpeg",
+            ".gif",
+            ".svg",
+            ".webp",
+        )
+    ):
+        return False
+
+    # ----------------------------------------
+    # Split email
+    # ----------------------------------------
 
     local_part, domain = email.rsplit(
         "@",
@@ -543,10 +631,102 @@ def classify_email(email):
 
     return "Business Contact"
 
+def normalize_internal_url(
+    base_url,
+    link,
+):
+    """
+    Convert a discovered link into an absolute URL
+    and keep only HTTP/HTTPS internal links.
+    """
+
+    if not link:
+        return None
+
+    link = link.strip()
+
+    # Ignore mailto links
+    if link.lower().startswith("mailto:"):
+        return None
+
+    # Ignore telephone links
+    if link.lower().startswith("tel:"):
+        return None
+
+    # Ignore javascript links
+    if link.lower().startswith("javascript:"):
+        return None
+
+    absolute_url = urljoin(
+        base_url,
+        link,
+    )
+
+    parsed_base = urlparse(
+        base_url
+    )
+
+    parsed_url = urlparse(
+        absolute_url
+    )
+
+    if parsed_url.scheme not in (
+        "http",
+        "https",
+    ):
+        return None
+
+    # Only crawl same-domain pages
+    if (
+        parsed_url.netloc.lower()
+        != parsed_base.netloc.lower()
+    ):
+        return None
+
+    # Remove fragment
+    clean_url = absolute_url.split(
+        "#",
+        1,
+    )[0]
+
+    return clean_url.rstrip("/")
+
+def get_page_priority(url):
+    """
+    Give higher priority to pages that are more likely
+    to contain business contact emails.
+    """
+
+    url_lower = url.lower()
+
+    score = 0
+
+    for term, priority in PAGE_PRIORITY_TERMS.items():
+
+        if term in url_lower:
+            score = max(
+                score,
+                priority,
+            )
+
+    return score
 
 def find_emails_from_website(
     website
 ):
+
+    if not website:
+
+        return {
+            "emails": [],
+            "primary_email": None,
+            "email_type": None,
+            "source_url": None,
+        }
+
+    # ------------------------------------------------
+    # Normalize website
+    # ------------------------------------------------
 
     website = normalize_website(
         website
@@ -561,151 +741,234 @@ def find_emails_from_website(
             "source_url": None,
         }
 
-    print(
-        f"    Website: {website}"
+    # ------------------------------------------------
+    # Prefer HTTPS
+    # ------------------------------------------------
+
+    if website.startswith(
+        "http://"
+    ):
+
+        website = (
+            "https://"
+            + website[len("http://"):]
+        )
+
+    website = website.rstrip("/")
+
+    # ------------------------------------------------
+    # Tracking
+    # ------------------------------------------------
+
+    pages_checked = set()
+
+    pages_to_visit = []
+
+    discovered_emails = set()
+
+    email_sources = {}
+
+    # ------------------------------------------------
+    # Homepage gets highest priority
+    # ------------------------------------------------
+
+    pages_to_visit.append(
+        (
+            1000,
+            website,
+        )
     )
 
-    emails = []
+    # ------------------------------------------------
+    # Maximum 10 pages
+    # ------------------------------------------------
 
-    pages_checked = []
+    while (
+        pages_to_visit
+        and len(pages_checked) < MAX_PAGES
+    ):
 
-    # ========================================================
-    # STEP 1 — Homepage
-    # ========================================================
-
-    html, final_url = fetch_page(
-        website
-    )
-
-    if html:
-
-        pages_checked.append(
-            final_url
+        # Highest priority first
+        pages_to_visit.sort(
+            key=lambda item: item[0],
+            reverse=True,
         )
 
-        homepage_emails = (
-            extract_emails_from_html(
-                html
-            )
+        priority, url = (
+            pages_to_visit.pop(0)
         )
-
-        if homepage_emails:
-
-            print(
-                f"    Found on homepage: "
-                f"{homepage_emails}"
-            )
-
-        emails.extend(
-            homepage_emails
-        )
-
-        contact_links = (
-            find_contact_links(
-                final_url,
-                html,
-            )
-        )
-
-    else:
-
-        contact_links = []
-
-    # ========================================================
-    # STEP 2 — Add standard contact URLs
-    # ========================================================
-
-    parsed = urlparse(
-        final_url
-        if final_url
-        else website
-    )
-
-    base_url = (
-        f"{parsed.scheme}://"
-        f"{parsed.netloc}"
-    )
-
-    for path in COMMON_CONTACT_PATHS:
-
-        url = (
-            base_url.rstrip("/")
-            + path
-        )
-
-        if url not in contact_links:
-
-            contact_links.append(
-                url
-            )
-
-    # ========================================================
-    # STEP 3 — Crawl contact-related pages
-    # ========================================================
-
-    for url in contact_links:
-
-        if len(pages_checked) >= 10:
-            break
 
         if url in pages_checked:
             continue
 
+        pages_checked.add(url)
+
         print(
-            f"    Checking: {url}"
+            f"    Checking "
+            f"({len(pages_checked)}/{MAX_PAGES}): "
+            f"{url}"
         )
+
+        # ------------------------------------------------
+        # Fetch page using your existing fetch_page()
+        # ------------------------------------------------
 
         html, final_url = fetch_page(
             url
         )
 
+        # ------------------------------------------------
+        # Detect external redirects
+        # ------------------------------------------------
+
+        original_domain = (
+            urlparse(website)
+            .netloc
+            .lower()
+            .replace("www.", "")
+        )
+
+        final_domain = (
+            urlparse(final_url)
+            .netloc
+            .lower()
+            .replace("www.", "")
+        )
+
+        if (
+            final_domain
+            and final_domain != original_domain
+        ):
+
+            print(
+                f"    Redirected externally: "
+                f"{final_domain}"
+            )
+
+            print(
+                "    Skipping external domain."
+            )
+
+            continue
+
         if not html:
             continue
 
-        pages_checked.append(
-            final_url
-        )
+        # ------------------------------------------------
+        # Extract emails
+        # ------------------------------------------------
 
-        page_emails = (
+        emails = (
             extract_emails_from_html(
                 html
             )
         )
 
-        if page_emails:
+        if emails:
 
             print(
-                f"    Found: "
-                f"{page_emails}"
+                f"    Found: {emails}"
             )
 
-        for email in page_emails:
+        for email in emails:
 
-            if email not in emails:
+            email = clean_email(
+                email
+            )
 
-                emails.append(
+            if not email:
+                continue
+
+            if not is_real_email(
+                email
+            ):
+                continue
+
+            if email not in discovered_emails:
+
+                discovered_emails.add(
                     email
                 )
 
+                email_sources[
+                    email
+                ] = final_url
+
         # ------------------------------------------------
-        # Stop once we have a useful business email
+        # Discover internal links
         # ------------------------------------------------
 
-        if emails:
+        soup = BeautifulSoup(
+            html,
+            "html.parser",
+        )
 
-            has_priority_email = any(
-                get_email_priority(email) >= 80
-                for email in emails
+        for anchor in soup.find_all(
+            "a",
+            href=True,
+        ):
+
+            href = anchor.get(
+                "href",
+                "",
+            ).strip()
+
+            link = normalize_internal_url(
+                final_url,
+                href,
             )
 
-            if has_priority_email:
-                break
+            if not link:
+                continue
 
-    # ========================================================
-    # STEP 4 — Select primary email
-    # ========================================================
+            if link in pages_checked:
+                continue
 
-    if not emails:
+            # Don't queue duplicate URLs
+            already_queued = any(
+                item[1] == link
+                for item in pages_to_visit
+            )
+
+            if already_queued:
+                continue
+
+            page_priority = (
+                get_page_priority(
+                    link
+                )
+            )
+
+            pages_to_visit.append(
+                (
+                    page_priority,
+                    link,
+                )
+            )
+
+        # ------------------------------------------------
+        # Early stop for strong business email
+        # ------------------------------------------------
+
+        if any(
+            is_high_priority_email(
+                email
+            )
+            for email in discovered_emails
+        ):
+
+            print(
+                "    High-priority "
+                "business email found."
+            )
+
+            break
+
+    # ------------------------------------------------
+    # Browser fallback
+    # ------------------------------------------------
+
+    if not discovered_emails:
 
         print(
             "    Requests found no email."
@@ -715,11 +978,22 @@ def find_emails_from_website(
             "    Trying browser..."
         )
 
-        browser_emails = (
-            find_emails_with_browser(
-                website
+        try:
+
+            browser_emails = (
+                find_emails_with_browser(
+                    website
+                )
             )
-        )
+
+        except Exception as error:
+
+            print(
+                f"    Browser failed: "
+                f"{error}"
+            )
+
+            browser_emails = []
 
         for email in browser_emails:
 
@@ -727,46 +1001,55 @@ def find_emails_from_website(
                 email
             )
 
-            if (
-                email
-                and email not in emails
-            ):
-                emails.append(
-                    email
-                )
+            if not email:
+                continue
 
-    # Prefer generic business emails
-    generic_emails = [
-        email
-        for email in emails
-        if classify_email(email)
-        == "Generic Business"
-    ]
+            if not is_real_email(
+                email
+            ):
+                continue
+
+            discovered_emails.add(
+                email
+            )
+
+            email_sources[
+                email
+            ] = website
+
+    # ------------------------------------------------
+    # Still nothing
+    # ------------------------------------------------
+
+    if not discovered_emails:
+
+        print(
+            "    No email found."
+        )
+
+        return {
+            "emails": [],
+            "primary_email": None,
+            "email_type": None,
+            "source_url": None,
+        }
+
+    # ------------------------------------------------
+    # Select primary email
+    # ------------------------------------------------
 
     primary_email = max(
-        emails,
+        discovered_emails,
         key=get_email_priority,
     )
 
-    source_url = None
+    source_url = email_sources.get(
+        primary_email
+    )
 
-    # We already know which pages produced emails
-    # from the crawling process. To keep this version
-    # simple, use the first page that contains the email.
-    for url in pages_checked:
-
-        html, _ = fetch_page(
-            url
-        )
-
-        if html and (
-            primary_email
-            in html.lower()
-        ):
-
-            source_url = url
-
-            break
+    email_type = classify_email(
+        primary_email
+    )
 
     print(
         f"    PRIMARY EMAIL: "
@@ -774,10 +1057,10 @@ def find_emails_from_website(
     )
 
     return {
-        "emails": emails,
-        "primary_email": primary_email,
-        "email_type": classify_email(
-            primary_email
+        "emails": sorted(
+            discovered_emails
         ),
+        "primary_email": primary_email,
+        "email_type": email_type,
         "source_url": source_url,
     }

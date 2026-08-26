@@ -3,7 +3,7 @@ from email_finder import (
 )
 
 
-website = "http://www.forestcounty.co.in/"
+website = "https://thejunglevalley.com/"
 
 
 result = find_emails_from_website(
