@@ -1,14 +1,9 @@
 import os
 from datetime import datetime
-
 import pandas as pd
 from dotenv import load_dotenv
-
 from email_sender import send_email
-
-
 load_dotenv()
-
 
 INPUT_FILE = "ratebotai_mahabaleshwar_leads_enriched.xlsx"
 
@@ -17,9 +12,7 @@ OUTPUT_FILE = "ratebotai_mahabaleshwar_campaign.xlsx"
 # IMPORTANT:
 # Start with 1.
 # Increase only after manually checking the emails.
-SEND_LIMIT = 6
-
-
+SEND_LIMIT = 9
 
 def is_empty(value):
     if value is None:
@@ -30,10 +23,9 @@ def is_empty(value):
 
     return not str(value).strip()
 
-
 def get_city(address):
     """
-    Try to get a readable location from the Google Places address.
+    Extract a readable city/location from a Google Places address.
     """
 
     if is_empty(address):
@@ -45,6 +37,65 @@ def get_city(address):
         if part.strip()
     ]
 
+    if not parts:
+        return "your area"
+
+    # Remove country
+    country_names = {
+        "india",
+    }
+
+    parts = [
+        part
+        for part in parts
+        if part.lower() not in country_names
+    ]
+
+    if not parts:
+        return "your area"
+
+    # Remove PIN-code-only component
+    parts = [
+        part
+        for part in parts
+        if not part.isdigit()
+    ]
+
+    if not parts:
+        return "your area"
+
+    # For addresses such as:
+    # Panchgani - Mahabaleshwar Rd,
+    # Mahabaleshwar,
+    # Dhangarwadi,
+    # Maharashtra 412806,
+    # India
+    #
+    # Maharashtra is the state, so prefer the
+    # component before the state.
+
+    state_names = {
+        "maharashtra",
+        "goa",
+        "gujarat",
+        "karnataka",
+        "kerala",
+        "madhya pradesh",
+        "rajasthan",
+        "delhi",
+        "tamil nadu",
+        "telangana",
+        "andhra pradesh",
+    }
+
+    for index, part in enumerate(parts):
+
+        if part.lower() in state_names:
+
+            if index > 0:
+                return parts[index - 1]
+
+    # Fallback
     if len(parts) >= 2:
         return parts[-2]
 
@@ -87,7 +138,23 @@ If you'd prefer not to receive further emails from us, simply reply and let us k
 
     return subject, body
 
+def is_business_email(email_quality):
+    return str(
+        email_quality
+    ).strip().lower() == "business email"
 
+
+def is_free_email(email_quality):
+    return str(
+        email_quality
+    ).strip().lower() == "free email"
+
+
+def is_chain_property(value):
+    return str(
+        value
+    ).strip().lower() == "yes"
+    
 def main():
 
     print("=" * 70)
@@ -135,16 +202,23 @@ def main():
             ""
         )
 
-        status = row.get(
-            "email_status",
-            ""
-        )
-
         if is_empty(email):
             continue
 
-        # Don't send twice
-        if str(status).strip().lower() == "sent":
+        status = str(
+            row.get(
+                "email_status",
+                ""
+            )
+        ).strip().lower()
+
+        # Never retry these automatically
+        if status in {
+            "sent",
+            "bounced",
+            "delivery failed",
+            "do not contact",
+        }:
             continue
 
         email_quality = str(
@@ -154,21 +228,79 @@ def main():
             )
         ).strip()
 
-        # Skip emails explicitly marked invalid
+        # Never send to explicitly invalid emails
         if email_quality.lower() == "invalid":
             continue
 
-        eligible.append(index)
+        eligible.append({
+            "index": index,
+            "business_email": (
+                1
+                if is_business_email(email_quality)
+                else 0
+            ),
+            "free_email": (
+                1
+                if is_free_email(email_quality)
+                else 0
+            ),
+            "chain": (
+                1
+                if is_chain_property(
+                    row.get(
+                        "Chain",
+                        ""
+                    )
+                )
+                else 0
+            ),
+            "lead_score": (
+                float(
+                    row.get(
+                        "Lead Score",
+                        0
+                    )
+                )
+                if pd.notna(
+                    row.get(
+                        "Lead Score",
+                        0
+                    )
+                )
+                else 0
+            ),
+        })
+
+
+    # --------------------------------------------------
+    # Prioritize leads
+    # --------------------------------------------------
+
+    eligible.sort(
+        key=lambda lead: (
+            lead["business_email"],
+            -lead["chain"],
+            lead["lead_score"],
+        ),
+        reverse=True,
+    )
+
+
+    eligible_indexes = [
+        lead["index"]
+        for lead in eligible
+    ]
 
     print(
-        f"Eligible leads: {len(eligible)}"
+        f"Eligible leads: "
+        f"{len(eligible_indexes)}"
     )
 
     # --------------------------------------------------
     # Limit sending
     # --------------------------------------------------
 
-    selected = eligible[
+    selected = eligible_indexes[
         :SEND_LIMIT
     ]
 

@@ -73,6 +73,8 @@ def send_email(
     )
 
     message["To"] = recipient
+    
+    message["Bcc"] = SENDER_EMAIL
 
     message["Subject"] = subject
 
