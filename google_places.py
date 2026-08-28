@@ -36,14 +36,14 @@ if not API_KEY:
 # Later we can make this a command-line argument.
 # ------------------------------------------------------------
 
-CITY = "Mahabaleshwar"
-STATE = "Maharashtra"
+CITY = "Pushkar"
+STATE = "Rajasthan"
 COUNTRY = "India"
 
 
 # Nashik approximate center
-CITY_LATITUDE = 17.9217
-CITY_LONGITUDE = 73.6556
+CITY_LATITUDE = 26.49022
+CITY_LONGITUDE = 74.55211
 
 
 # ------------------------------------------------------------

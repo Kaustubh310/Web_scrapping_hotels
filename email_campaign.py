@@ -5,14 +5,14 @@ from dotenv import load_dotenv
 from email_sender import send_email
 load_dotenv()
 
-INPUT_FILE = "ratebotai_mahabaleshwar_leads_enriched.xlsx"
+INPUT_FILE = "ratebotai_pushkar_leads_enriched.xlsx"
 
-OUTPUT_FILE = "ratebotai_mahabaleshwar_campaign.xlsx"
+OUTPUT_FILE = "ratebotai_pushkar_campaign.xlsx"
 
 # IMPORTANT:
 # Start with 1.
 # Increase only after manually checking the emails.
-SEND_LIMIT = 9
+SEND_LIMIT = 100
 
 def is_empty(value):
     if value is None:

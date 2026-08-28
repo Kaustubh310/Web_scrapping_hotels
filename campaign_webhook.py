@@ -1,9 +1,66 @@
 from flask import Flask, request, jsonify
+import pandas as pd
 
 from email_sender import send_email
 
 
 app = Flask(__name__)
+
+CAMPAIGN_FILE = "ratebotai_nashik_leads1.xlsx"
+
+
+def clean_phone(phone):
+    if phone is None:
+        return ""
+
+    phone = str(phone).strip()
+
+    # Remove Excel's trailing .0 for numeric values
+    if phone.endswith(".0"):
+        phone = phone[:-2]
+
+    # Keep digits only
+    phone = "".join(
+        char for char in phone
+        if char.isdigit()
+    )
+
+    # Indian number normalization
+    if phone.startswith("0") and len(phone) == 11:
+        # 09615080505 -> 919615080505
+        phone = "91" + phone[1:]
+
+    elif len(phone) == 10:
+        # 9615080505 -> 919615080505
+        phone = "91" + phone
+
+    elif phone.startswith("91") and len(phone) == 12:
+        # Already normalized
+        pass
+
+    return phone
+
+
+def find_property(phone):
+    df = pd.read_excel(CAMPAIGN_FILE)
+
+    target_phone = clean_phone(phone)
+
+    for _, row in df.iterrows():
+
+        excel_phone = clean_phone(
+            row.get("Phone", "")
+        )
+
+        if excel_phone == target_phone:
+            return str(
+                row.get(
+                    "Property Name",
+                    "Unknown Property"
+                )
+            ).strip()
+
+    return "Unknown Property"
 
 
 @app.route("/campaign/call-request", methods=["POST"])
@@ -11,17 +68,25 @@ def call_request():
 
     data = request.get_json(silent=True) or {}
 
-    phone = data.get("phone", "").strip()
-    property_name = data.get(
-        "property_name",
-        "Unknown Property"
-    ).strip()
+    phone = clean_phone(
+        data.get("phone", "")
+    )
 
     if not phone:
+
         return jsonify({
             "success": False,
             "error": "Missing phone"
         }), 400
+
+    property_name = find_property(
+        phone
+    )
+
+    print(
+        f"CALL REQUESTED: "
+        f"{property_name} - {phone}"
+    )
 
     subject = (
         "RateBotAi - Hotel Requested a Call"
@@ -54,13 +119,9 @@ RateBotAi Hotel Campaign
             body=body,
         )
 
-        print(
-            f"CALL REQUESTED: "
-            f"{property_name} - {phone}"
-        )
-
         return jsonify({
             "success": True,
+            "property_name": property_name,
             "message": "Call request email sent"
         })
 

@@ -4,12 +4,12 @@ from lead_enrichment import (
 
 
 INPUT_FILE = (
-    "ratebotai_mahabaleshwar_leads2.xlsx"
+    "ratebotai_pushkar_leads2.xlsx"
 )
 
 
 OUTPUT_FILE = (
-    "ratebotai_mahabaleshwar_leads_enriched.xlsx"
+    "ratebotai_pushkar_leads_enriched.xlsx"
 )
 
 
